@@ -8,12 +8,14 @@
 
 #import <Foundation/Foundation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wstrict-prototypes"
 typedef void(^_Nullable ZDSubscribeNext)();
 #pragma clang diagnostic pop
 
-NS_ASSUME_NONNULL_BEGIN
+//================================================================
 
 @interface ZDEventBus<__covariant Subscriber : NSObject *> : NSObject
 
@@ -28,8 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-
-
+//================================================================
 
 @interface NSObject (ZDEventBus)
 
@@ -39,10 +40,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+//================================================================
 
 #define ZDEventBusDispatchEvent(eventName, ...) \
 [ZDEventBus dispatchEvent:eventName onQueue:nil values:^(ZDSubscribeNext deliverValuesBlock) {\
-deliverValuesBlock(__VA_ARGS__);            \
+    deliverValuesBlock(__VA_ARGS__);            \
 }];
 
 NS_ASSUME_NONNULL_END

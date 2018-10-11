@@ -9,9 +9,13 @@
 #import "ZDEventBus.h"
 @import ObjectiveC;
 
+//-----------------------------------------------------------------------
+
 @interface NSObject (ZDEventBusSubscribe)
 @property (nonatomic, copy) ZDSubscribeNext subscribeNext;
 @end
+
+//-----------------------------------------------------------------------
 
 @interface ZDEventBus ()
 @property (nonatomic, strong) dispatch_semaphore_t lock;
@@ -121,7 +125,7 @@
 }
 
 - (ZDSubscribeNext)subscribeNext {
-    return objc_getAssociatedObject(self, @selector(subscribeNext));
+    return objc_getAssociatedObject(self, _cmd);
 }
 
 @end
