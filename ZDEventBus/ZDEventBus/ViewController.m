@@ -20,7 +20,11 @@
     // Do any additional setup after loading the view, typically from a nib.
     
     [ZDEventBus subscribeEvent:@"ViewController" subscriber:self next:^(NSString *name, NSInteger age){
-        NSLog(@"%@ + %ld", name, (long)age);
+        NSLog(@"Event ViewController = %@ + %ld", name, (long)age);
+    }];
+    
+    [ZDEventBus subscribeEvent:@"xxx" subscriber:self next:^(NSNumber *x, NSInteger i){
+        NSLog(@"Event xxx = %@ + %ld", x, (long)i);
     }];
 }
 
@@ -31,6 +35,8 @@
         [ZDEventBus dispatchEvent:@"ViewController" onQueue:queue values:^(ZDSubscribeNext deliverValuesBlock) {
             deliverValuesBlock(@"zero.d.saber", i);
         }];
+        
+        ZDEventBusDispatchEvent(@"xxx", @123456789, i);
     });
 }
 

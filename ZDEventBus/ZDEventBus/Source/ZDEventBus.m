@@ -12,7 +12,13 @@
 //-----------------------------------------------------------------------
 
 @interface NSObject (ZDEventBusSubscribe)
-@property (nonatomic, copy) ZDSubscribeNext subscribeNext;
+
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableSet<ZDSubscribeNext> *> *zd_subscribeNextDict;
+
+- (void)zd_addSubscribeNext:(ZDSubscribeNext)next forKey:(NSString *)eventName;
+
+- (NSMutableSet<ZDSubscribeNext> *)zd_subscribeNextsForKey:(NSString *)eventName;
+
 @end
 
 //-----------------------------------------------------------------------
@@ -53,17 +59,19 @@
     if (!eventName || eventName.length == 0) return;
     if (!subscriber) return;
     
-    subscriber.subscribeNext = subscribeNext;
+    [subscriber zd_addSubscribeNext:subscribeNext forKey:eventName];
     
     ZDEventBus *bus = [ZDEventBus shareBus];
     
     dispatch_semaphore_wait(bus.lock, DISPATCH_TIME_FOREVER);
-    NSHashTable *subscribers = bus.subscribersDict[eventName];
-    if (!subscribers) {
-        subscribers = [NSHashTable weakObjectsHashTable];
+    {
+        NSHashTable *subscribers = bus.subscribersDict[eventName];
+        if (!subscribers) {
+            subscribers = [NSHashTable weakObjectsHashTable];
+        }
+        [subscribers addObject:subscriber];
+        bus.subscribersDict[eventName] = subscribers;
     }
-    [subscribers addObject:subscriber];
-    bus.subscribersDict[eventName] = subscribers;
     dispatch_semaphore_signal(bus.lock);
 }
 
@@ -74,10 +82,12 @@
     ZDEventBus *bus = [ZDEventBus shareBus];
     
     dispatch_semaphore_wait(bus.lock, DISPATCH_TIME_FOREVER);
-    NSHashTable *subscribers = bus.subscribersDict[eventName];
-    if ([subscribers containsObject:subscriber]) {
-        [subscribers removeObject:subscriber];
-        bus.subscribersDict[eventName] = subscribers;
+    {
+        NSHashTable *subscribers = bus.subscribersDict[eventName];
+        if ([subscribers containsObject:subscriber]) {
+            [subscribers removeObject:subscriber];
+            bus.subscribersDict[eventName] = subscribers;
+        }
     }
     dispatch_semaphore_signal(bus.lock);
 }
@@ -93,24 +103,28 @@
     
     dispatch_semaphore_wait(bus.lock, DISPATCH_TIME_FOREVER);
     NSHashTable *subscribers = bus.subscribersDict[eventName];
+    NSArray *allTargets = subscribers.allObjects; // guaranteed that the target will not be released when traversing
+    dispatch_semaphore_signal(bus.lock);
+    
     if (onQueue &&
         strcmp(dispatch_queue_get_label(dispatch_get_main_queue()), dispatch_queue_get_label(onQueue)) &&
         strcmp(dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL), dispatch_queue_get_label(onQueue))) {
-        NSArray *allTargets = subscribers.allObjects; // guaranteed that the target will not be released when traversing
         dispatch_apply(subscribers.count, onQueue, ^(size_t i) {
             __kindof NSObject *target = allTargets[i];
-            ZDSubscribeNext nextBlock = target.subscribeNext;
-            wrapCallbackBlock(nextBlock);
+            NSMutableSet<ZDSubscribeNext> *set = [target zd_subscribeNextsForKey:eventName];
+            for (ZDSubscribeNext nextBlock in set.copy) {
+                wrapCallbackBlock(nextBlock);
+            }
         });
     }
     else {
         for (__kindof NSObject *target in subscribers) {
-            ZDSubscribeNext nextBlock = target.subscribeNext;
-            if (!nextBlock) continue;
-            wrapCallbackBlock(nextBlock);
+            NSMutableSet<ZDSubscribeNext> *set = [target zd_subscribeNextsForKey:eventName];
+            for (ZDSubscribeNext nextBlock in set.copy) {
+                wrapCallbackBlock(nextBlock);
+            }
         }
     }
-    dispatch_semaphore_signal(bus.lock);
 }
 
 @end
@@ -119,13 +133,40 @@
 
 @implementation NSObject (ZDEventBusSubscribe)
 
-- (void)setSubscribeNext:(ZDSubscribeNext)subscribeNext {
-    if (self.subscribeNext) return;
-    objc_setAssociatedObject(self, @selector(subscribeNext), subscribeNext, OBJC_ASSOCIATION_COPY);
+- (void)zd_addSubscribeNext:(ZDSubscribeNext)next forKey:(NSString *)eventName {
+    if (!next || !eventName) return;
+    
+    dispatch_semaphore_wait([ZDEventBus shareBus].lock, DISPATCH_TIME_FOREVER);
+    NSMutableSet *mutSet = self.zd_subscribeNextDict[eventName];
+    if (!mutSet) {
+        mutSet = [NSMutableSet set];
+    }
+    [mutSet addObject:next];
+    self.zd_subscribeNextDict[eventName] = mutSet;
+    dispatch_semaphore_signal([ZDEventBus shareBus].lock);
 }
 
-- (ZDSubscribeNext)subscribeNext {
-    return objc_getAssociatedObject(self, _cmd);
+- (NSMutableSet<ZDSubscribeNext> *)zd_subscribeNextsForKey:(NSString *)eventName {
+    if (!eventName) return nil;
+    
+    dispatch_semaphore_wait([ZDEventBus shareBus].lock, DISPATCH_TIME_FOREVER);
+    NSMutableSet *set = self.zd_subscribeNextDict[eventName];
+    dispatch_semaphore_signal([ZDEventBus shareBus].lock);
+    return set;
+}
+
+#pragma mark - Property
+- (void)setZd_subscribeNextDict:(NSMutableDictionary<NSString *, NSMutableSet *> *)zd_subscribeNextDict {
+    objc_setAssociatedObject(self, @selector(zd_subscribeNextDict), zd_subscribeNextDict, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (NSMutableDictionary<NSString *, NSMutableSet<ZDSubscribeNext> *> *)zd_subscribeNextDict {
+    NSMutableDictionary<NSString *, NSMutableSet<ZDSubscribeNext> *> *mutDict = objc_getAssociatedObject(self, _cmd);
+    if (!mutDict) {
+        mutDict = @{}.mutableCopy;
+        self.zd_subscribeNextDict = mutDict;
+    }
+    return mutDict;
 }
 
 @end
