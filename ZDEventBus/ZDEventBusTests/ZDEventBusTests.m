@@ -28,16 +28,19 @@
 - (void)testExample {
     // This is an example of a functional test case.
     // Use XCTAssert and related functions to verify your tests produce the correct results.
-    [self subscribeEvent:@"" next:^(id value1, NSInteger value2, id value3){
-        NSLog(@"***** %@ - %ld - %@", value1, value2, value3);
+    // 传递的参数多余接收的是没问题的，但是传递的参数少于接收的参数的话会crash
+    [self subscribeEvent:@"test" next:^(id value1, NSInteger value2, id value3){
+        NSLog(@"\n\n***** %@ - %ld - %@ \n\n\n", value1, value2, value3);
         XCTAssertEqualObjects(value1, @"xxxx");
         XCTAssert(value2 == 12345678);
         XCTAssertNotNil(value3);
     }];
     
-    [self dispatchEvent:@"" values:^(ZDSubscribeNext deliverValuesBlock) {
-        deliverValuesBlock(@"xxxx", 12345678, [NSObject new]);
+    [self dispatchEvent:@"test" values:^(ZDSubscribeNext deliverValuesBlock) {
+        deliverValuesBlock(@"xxxx", 12345678, NSObject.new, 100, 200);
     }];
+    
+    NSLog(@"%@", self);
 }
 
 - (void)testPerformanceExample {
